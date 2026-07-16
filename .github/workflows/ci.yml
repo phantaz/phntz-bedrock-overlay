@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate shell scripts
+        run: |
+          bash -n install
+          bash -n apply
+          shellcheck install apply
+
+      - name: Validate PHP templates
+        run: find templates -type f -name '*.php' -print0 | xargs -0 -n1 php -l
