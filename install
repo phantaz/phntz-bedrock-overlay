@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+REPOSITORY="${PHNTZ_OVERLAY_REPOSITORY:-phantaz/phntz-bedrock-overlay}"
+VERSION="${PHNTZ_OVERLAY_VERSION:-main}"
+SOURCE="${PHNTZ_OVERLAY_SOURCE:-}"
+ARCHIVE_URL="${PHNTZ_OVERLAY_ARCHIVE_URL:-}"
+
+fail() {
+  printf 'Error: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -f composer.json && -f config/application.php && -d web/app/themes ]] \
+  || fail 'Run this command from the root of an existing Roots Bedrock project.'
+
+if [[ -n "$SOURCE" ]]; then
+  [[ -x "$SOURCE/apply" ]] || fail "Overlay apply command not found: ${SOURCE}/apply"
+  exec "$SOURCE/apply" "$@"
+fi
+
+command -v curl >/dev/null 2>&1 || fail 'curl is required.'
+command -v tar >/dev/null 2>&1 || fail 'tar is required.'
+
+temporary_directory="$(mktemp -d)"
+trap 'rm -rf "$temporary_directory"' EXIT
+
+if [[ -z "$ARCHIVE_URL" ]]; then
+  if [[ "$VERSION" == 'main' || "$VERSION" == 'master' ]]; then
+    ARCHIVE_URL="https://github.com/${REPOSITORY}/archive/refs/heads/${VERSION}.tar.gz"
+  else
+    ARCHIVE_URL="https://github.com/${REPOSITORY}/archive/refs/tags/${VERSION}.tar.gz"
+  fi
+fi
+
+printf 'Downloading %s (%s)...\n' "$REPOSITORY" "$VERSION"
+curl --fail --silent --show-error --location --max-time 60 "$ARCHIVE_URL" \
+  | tar -xz -C "$temporary_directory"
+
+apply_command="$(find "$temporary_directory" -mindepth 2 -maxdepth 2 -type f -name apply -print -quit)"
+[[ -n "$apply_command" ]] || fail 'The downloaded archive does not contain the apply command.'
+chmod +x "$apply_command"
+
+"$apply_command" "$@"
